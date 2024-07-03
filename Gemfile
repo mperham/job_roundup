@@ -11,3 +11,5 @@ gem "solid_queue", "~> 0.3"
 gem "pg", "~> 1.5"
 
 gem "ruby-prof", "~> 1.7"
+
+gem "benchmark_driver", require: false

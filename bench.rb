@@ -50,6 +50,13 @@ Benchmark.driver do |x|
     end
   RUBY
 
+  x.report "solid_queue-pushbulk", <<~RUBY
+    ActiveJob::Base.queue_adapter = :solid_queue
+    ActiveJob.perform_all_later jobs.times.map do
+      RoundupJob.new(123, "hello world", hash)
+    end
+  RUBY
+
   x.report "sidekiq-push", <<~RUBY
     ActiveJob::Base.queue_adapter = :sidekiq
     jobs.times do

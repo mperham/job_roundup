@@ -1,0 +1,13 @@
+#!/bin/bash
+
+set -eu
+
+export RUBY_YJIT_ENABLE=1
+export RAILS_ENV=production
+export SECRET_KEY_BASE=0
+export DISABLE_DATABASE_ENVIRONMENT_CHECK=1
+
+bin/rake db:drop db:create db:migrate
+redis-cli flushall
+
+exec bin/bundle exec ruby bench.rb

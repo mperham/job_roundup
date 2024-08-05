@@ -8,7 +8,7 @@ Sidekiq.redis { |c| c.flushdb }
 
 # You can run this to clear all data from PG and Redis
 # rake db:drop db:create db:migrate ; redis-cli flushall
-raise "Databases not empty" unless [GoodJob::Job.count, SolidQueue::Job.count, Sidekiq::Queue.new.size].all?(&:zero?)
+raise "Databases not empty. Use bin/bench" unless [GoodJob::Job.count, SolidQueue::Job.count, Sidekiq::Queue.new.size].all?(&:zero?)
 
 puts RUBY_DESCRIPTION
 p({rails: Rails.version,
@@ -19,51 +19,66 @@ p({rails: Rails.version,
 jobs = 1000
 puts "Benchmarking with #{jobs} jobs per iteration"
 
+puts "==== Single Enqueue ===="
 Benchmark.driver do |x|
   x.prelude <<~RUBY
+    # frozen_string_literal: true
     require File.expand_path("./config/environment", #{File.dirname(__FILE__).inspect})
 
     hash = {"foo" => true}
     jobs = #{jobs}
   RUBY
 
-  x.report "good_job-push", <<~RUBY
-    ActiveJob::Base.queue_adapter = :good_job
+  x.report "good_job", <<~RUBY
     jobs.times do
-      RoundupJob.perform_later(123, "hello world", hash)
+      RoundupJob::Goodjob.perform_later(123, "hello world", hash)
     end
   RUBY
 
-  x.report "good_job-pushbulk", <<~RUBY
-    ActiveJob::Base.queue_adapter = :good_job
-    GoodJob::Bulk.enqueue do
-      jobs.times do
-        RoundupJob.perform_later(123, "hello world", hash)
-      end
-    end
-  RUBY
-
-  x.report "solid_queue-push", <<~RUBY
-    ActiveJob::Base.queue_adapter = :solid_queue
+  x.report "solid_queue", <<~RUBY
     jobs.times do
-      RoundupJob.perform_later(123, "hello world", hash)
+      RoundupJob::Solidqueue.perform_later(123, "hello world", hash)
     end
   RUBY
 
-  x.report "sidekiq-push", <<~RUBY
-    ActiveJob::Base.queue_adapter = :sidekiq
+  x.report "sidekiq", <<~RUBY
     jobs.times do
-      RoundupJob.perform_later(123, "hello world", hash)
+      RoundupJob::Sidekiq.perform_later(123, "hello world", hash)
     end
   RUBY
 
-  x.report "sidekiq-native-enq", <<~RUBY
+  x.report "sidekiq-native", <<~RUBY
     jobs.times do
       RoundupWorker.perform_async(123, "hello world", hash)
     end
   RUBY
+end
 
-  x.report "sidekiq-native-enq-bulk", <<~RUBY
+puts "==== Bulk Enqueue ===="
+Benchmark.driver do |x|
+  x.prelude <<~RUBY
+    # frozen_string_literal: true
+    require File.expand_path("./config/environment", #{File.dirname(__FILE__).inspect})
+
+    hash = {"foo" => true}
+    jobs = #{jobs}
+  RUBY
+
+  x.report "good_job", <<~RUBY
+    GoodJob::Bulk.enqueue do
+      jobs.times do
+        RoundupJob::Goodjob.perform_later(123, "hello world", hash)
+      end
+    end
+  RUBY
+
+  x.report "sidekiq", <<~RUBY
+    ActiveJob.perform_all_later(jobs.times.map do
+      RoundupJob::Sidekiq.new(123, "hello world", hash)
+    end )
+  RUBY
+
+  x.report "sidekiq-native", <<~RUBY
     RoundupWorker.perform_bulk(jobs.times.map { [123, "hello world", hash] })
   RUBY
 end
